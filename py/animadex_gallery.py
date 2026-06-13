@@ -303,24 +303,35 @@ async def api_proxy_image(request):
 
 @PromptServer.instance.routes.get("/animadex/batch_images")
 async def api_batch_images(request):
-    """批量加载图片，返回 base64 data URI"""
+    """批量并行加载图片，返回 base64 data URI"""
     urls = request.query.getall("url", [])
     if not urls:
         return web.json_response({})
+    urls = urls[:36]
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import base64
+
     result = {}
-    for url in urls[:36]:  # 最多36张
+    def _fetch_one(url):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=10) as resp:
                 img_bytes = resp.read()
-            import base64
             ct = "image/webp"
             if url.endswith(".png"): ct = "image/png"
             elif url.endswith(".jpg") or url.endswith(".jpeg"): ct = "image/jpeg"
             b64 = base64.b64encode(img_bytes).decode()
-            result[url] = f"data:{ct};base64,{b64}"
+            return url, f"data:{ct};base64,{b64}"
         except Exception:
-            result[url] = ""
+            return url, ""
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        futures = {pool.submit(_fetch_one, u): u for u in urls}
+        for f in as_completed(futures):
+            u, data = f.result()
+            result[u] = data
+
     return web.json_response(result)
 
 

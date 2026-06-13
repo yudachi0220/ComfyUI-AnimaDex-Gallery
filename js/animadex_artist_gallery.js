@@ -57,7 +57,6 @@ app.registerExtension({
                 }
                 selWidget.value = JSON.stringify({ selections });
                 try { node.onWidgetChanged?.(selWidget); } catch(e) {}
-                try { app.graph?.setDirtyCanvas(true, true); } catch(e) {}
             }
 
             const container = $el("div.animadex-artgallery", {
@@ -68,6 +67,16 @@ app.registerExtension({
                     overflow: "hidden"
                 }
             });
+
+            const styleEl = $el("style", { textContent: `
+                .animadex-card { border: 1px solid #333; }
+                .animadex-card.animadex-sel { border: 2px solid #4a9eff; }
+                .animadex-check { background: rgba(0,0,0,0.4); border: 2px solid #666; }
+                .animadex-card.animadex-sel .animadex-check { background: #4a9eff; border-color: #4a9eff; }
+                .animadex-check::after { content: ""; }
+                .animadex-card.animadex-sel .animadex-check::after { content: "✓"; }
+            `});
+            container.appendChild(styleEl);
 
             // ---- 样式工厂（必须在引用前定义） ----
             const S = {
@@ -224,11 +233,12 @@ app.registerExtension({
                 const isFav = favoriteSlugs.has(slug), isSel = selectedSlugs.has(slug);
 
                 const card = $el("div", {
-                    style: { border: isSel ? "2px solid #4a9eff" : "1px solid #333", borderRadius: "5px", overflow: "hidden", background: "#222", cursor: "pointer", position: "relative", transition: "border-color 0.15s" }
+                    className: "animadex-card" + (isSel ? " animadex-sel" : ""),
+                    style: { width: "100%", borderRadius: "5px", overflow: "hidden", background: "#222", cursor: "pointer", position: "relative", transition: "border-color 0.15s", boxSizing: "border-box" }
                 });
                 const check = $el("div", {
-                    style: { position: "absolute", top: "3px", left: "3px", zIndex: "2", width: "18px", height: "18px", borderRadius: "3px", background: isSel ? "#4a9eff" : "rgba(0,0,0,0.4)", border: "2px solid " + (isSel ? "#4a9eff" : "#666"), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: "#fff", fontWeight: "bold" },
-                    textContent: isSel ? "✓" : ""
+                    className: "animadex-check",
+                    style: { position: "absolute", top: "3px", left: "3px", zIndex: "2", width: "18px", height: "18px", borderRadius: "3px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: "#fff", fontWeight: "bold" }
                 }); card.appendChild(check);
                 const star = $el("div", {
                     style: { position: "absolute", top: "3px", right: "3px", zIndex: "2", fontSize: "14px", cursor: "pointer", color: isFav ? "#fc0" : "#555", textShadow: "0 0 3px rgba(0,0,0,0.8)", lineHeight: "1" },
@@ -237,12 +247,17 @@ app.registerExtension({
                 star.addEventListener("click", e => { e.stopPropagation(); toggleFav("artists", slug, star); });
                 card.appendChild(star);
                 card.addEventListener("click", () => {
-                    if (selectedSlugs.has(slug)) { selectedSlugs.delete(slug); card.style.borderColor = "#333"; check.style.background = "rgba(0,0,0,0.4)"; check.style.borderColor = "#666"; check.textContent = ""; }
-                    else { selectedSlugs.add(slug); card.style.borderColor = "#4a9eff"; check.style.background = "#4a9eff"; check.style.borderColor = "#4a9eff"; check.textContent = "✓"; }
+                    if (selectedSlugs.has(slug)) {
+                        selectedSlugs.delete(slug);
+                        card.classList.remove("animadex-sel");
+                    } else {
+                        selectedSlugs.add(slug);
+                        card.classList.add("animadex-sel");
+                    }
                     updatePreview(); pushSelection();
                 });
                 if (imgUrl) {
-                    const img = $el("img", { src: imgUrl, loading: "lazy", style: { width: "100%", aspectRatio: "3/4", objectFit: "contain", display: "block", background: "#1a1a1a" } });
+                    const img = $el("img", { src: imgUrl, loading: "lazy", style: { width: "100%", height: "auto", minHeight: "120px", objectFit: "cover", display: "block", background: "#1a1a1a" } });
                     img.onerror = () => { img.style.display = "none"; };
                     card.appendChild(img);
                 }
