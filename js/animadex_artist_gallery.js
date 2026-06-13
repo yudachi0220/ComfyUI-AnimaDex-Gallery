@@ -44,6 +44,7 @@ app.registerExtension({
             let items = [], currentPage = 1, totalPages = 1, totalCount = 0;
             let isLoading = false, selectedSlugs = new Set(), favoriteSlugs = new Set();
             let searchQuery = "", scoreFilter = "", showFavoritesOnly = false;
+            let imageCache = {};
 
             const selWidget = node.addWidget("text", "selection_data", "{}", () => {}, { serialize: true });
             selWidget.computeSize = () => [0, -4]; selWidget.type = "hidden";
@@ -171,6 +172,7 @@ app.registerExtension({
                     infoText.textContent = `共 ${totalCount.toLocaleString()} 位画师`;
                     pageNum.textContent = `${currentPage} / ${totalPages}`;
                     prevBtn.disabled = currentPage <= 1; nextBtn.disabled = currentPage >= totalPages;
+                    await batchLoadImages();
                     updatePreview(); renderGrid();
                 } catch (e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c44">⚠ 网络错误</div>'; }
                 isLoading = false;
@@ -184,9 +186,21 @@ app.registerExtension({
                     items = d.results || []; totalPages = 1; totalCount = items.length;
                     infoText.textContent = `⭐ 收藏: ${totalCount}`; pageNum.textContent = "";
                     prevBtn.disabled = nextBtn.disabled = true;
+                    await batchLoadImages();
                     updatePreview(); renderGrid();
                 } catch (e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c44">⚠ 加载失败</div>'; }
                 isLoading = false;
+            }
+            async function batchLoadImages() {
+                const urls = items.map(i => i.thumb_url).filter(u => u && !imageCache[u]);
+                if (!urls.length) return;
+                const params = new URLSearchParams();
+                urls.forEach(u => params.append("url", u));
+                try {
+                    const r = await fetch(`/animadex/batch_images?${params}`);
+                    const data = await r.json();
+                    Object.assign(imageCache, data);
+                } catch (e) {}
             }
             function updatePreview() {
                 const sel = items.filter(i => selectedSlugs.has(i.slug));
@@ -206,7 +220,7 @@ app.registerExtension({
                 const slug = item.slug, name = item.name || slug, trigger = item.trigger || "", count = item.count || 0;
                 const score = item.score != null ? item.score : 0, pct = Math.round(score * 100);
                 const stars = pct >= 50 ? "★★★★★" : pct >= 40 ? "★★★★" : pct >= 30 ? "★★★" : pct >= 20 ? "★★" : "★";
-                const imgUrl = item.thumb_url ? `/animadex/proxy_image?url=${encodeURIComponent(item.thumb_url)}` : "";
+                const imgUrl = imageCache[item.thumb_url] || "";
                 const isFav = favoriteSlugs.has(slug), isSel = selectedSlugs.has(slug);
 
                 const card = $el("div", {

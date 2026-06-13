@@ -46,6 +46,7 @@ app.registerExtension({
             let isLoading = false, selectedSlugs = new Set(), favoriteSlugs = new Set();
             let searchQuery = "", copyrightFilter = "", copyrights = [];
             let showFavoritesOnly = false;
+            let imageCache = {};  // url -> data URI
 
             // ---- hidden widget ----
             const selWidget = node.addWidget("text", "selection_data", "{}", () => {}, { serialize: true });
@@ -201,6 +202,7 @@ app.registerExtension({
                     pageNum.textContent = `${currentPage} / ${totalPages}`;
                     prevBtn.disabled = currentPage <= 1; nextBtn.disabled = currentPage >= totalPages;
                     countLabel.textContent = selectedSlugs.size ? `已选 ${selectedSlugs.size}` : "";
+                    await batchLoadImages();
                     renderGrid();
                 } catch (e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c44">⚠ 网络错误</div>'; }
                 isLoading = false;
@@ -215,9 +217,21 @@ app.registerExtension({
                     infoText.textContent = `⭐ 收藏: ${totalCount}`; pageNum.textContent = "";
                     prevBtn.disabled = nextBtn.disabled = true;
                     countLabel.textContent = selectedSlugs.size ? `已选 ${selectedSlugs.size}` : "";
+                    await batchLoadImages();
                     renderGrid();
                 } catch (e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c44">⚠ 加载失败</div>'; }
                 isLoading = false;
+            }
+            async function batchLoadImages() {
+                const urls = items.map(i => i.thumb_url).filter(u => u && !imageCache[u]);
+                if (!urls.length) return;
+                const params = new URLSearchParams();
+                urls.forEach(u => params.append("url", u));
+                try {
+                    const r = await fetch(`/animadex/batch_images?${params}`);
+                    const data = await r.json();
+                    Object.assign(imageCache, data);
+                } catch (e) {}
             }
             function renderGrid() {
                 grid.innerHTML = "";
@@ -226,7 +240,7 @@ app.registerExtension({
             }
             function createCard(item) {
                 const slug = item.slug, name = item.name || slug, trigger = item.trigger || "", count = item.count || 0;
-                const imgUrl = item.thumb_url ? `/animadex/proxy_image?url=${encodeURIComponent(item.thumb_url)}` : "";
+                const imgUrl = imageCache[item.thumb_url] || "";
                 const isFav = favoriteSlugs.has(slug), isSel = selectedSlugs.has(slug);
 
                 const card = $el("div", {
