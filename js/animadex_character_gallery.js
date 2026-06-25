@@ -47,21 +47,29 @@ app.registerExtension({
             let searchQuery = "", copyrightFilter = "", copyrights = [];
             let showFavoritesOnly = false;
             let imageCache = {};  // url -> data URI
+            const selectedItemData = []; // 完整选中数据（翻页后仍可用）
 
             // ---- hidden widget ----
             const selWidget = node.addWidget("text", "selection_data", "{}", () => {}, { serialize: true });
             selWidget.computeSize = () => [0, -4]; selWidget.type = "hidden";
 
-            function pushSelection() {
-                const selections = [];
-                let triggers = [], allTags = [];
-                for (const slug of selectedSlugs) {
-                    const item = items.find(i => i.slug === slug);
-                    if (item) {
-                        selections.push({ slug, trigger: item.trigger || "", tags: (item.tags || []).join(", ") });
-                        if (item.trigger) triggers.push(item.trigger);
-                        (item.tags || []).forEach(t => { if (!allTags.includes(t)) allTags.push(t); });
+            // 从 widget 恢复选中状态（节点重绘后重建）
+            try {
+                const saved = JSON.parse(selWidget.value);
+                if (saved?.selections) {
+                    for (const s of saved.selections) {
+                        selectedSlugs.add(s.slug);
+                        selectedItemData.push(s);
                     }
+                }
+            } catch(e) {}
+
+            function pushSelection() {
+                const selections = [...selectedItemData];
+                let triggers = [], allTags = [];
+                for (const s of selections) {
+                    if (s.trigger) triggers.push(s.trigger);
+                    (s.tags_arr || []).forEach(t => { if (!allTags.includes(t)) allTags.push(t); });
                 }
                 // 更新预览（放在最前，确保不因后续调用失败而跳过）
                 if (triggers.length) {
@@ -129,6 +137,7 @@ app.registerExtension({
             const countLabel = $el("span", { textContent: "", style: { color: "#666", fontSize: "11px", marginLeft: "auto" } });
             topBar.appendChild($el("button", { textContent: "🗑 清除", style: S.small(), title: "清除所有选择", onclick: () => {
                 selectedSlugs.clear();
+                selectedItemData.length = 0;
                 countLabel.textContent = "";
                 outputPreview.style.display = "none";
                 renderGrid();
@@ -214,6 +223,7 @@ app.registerExtension({
                     countLabel.textContent = selectedSlugs.size ? `已选 ${selectedSlugs.size}` : "";
                     await batchLoadImages();
                     renderGrid();
+                    pushSelection();
                 } catch (e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c44">⚠ 网络错误</div>'; }
                 isLoading = false;
             }
@@ -271,9 +281,12 @@ app.registerExtension({
                     if (selectedSlugs.has(slug)) {
                         selectedSlugs.delete(slug);
                         card.classList.remove("animadex-sel");
+                        const idx = selectedItemData.findIndex(s => s.slug === slug);
+                        if (idx >= 0) selectedItemData.splice(idx, 1);
                     } else {
                         selectedSlugs.add(slug);
                         card.classList.add("animadex-sel");
+                        selectedItemData.push({ slug, trigger: item.trigger || "", tags_arr: item.tags || [] });
                     }
                     countLabel.textContent = selectedSlugs.size ? `已选 ${selectedSlugs.size}` : ""; pushSelection();
                 });

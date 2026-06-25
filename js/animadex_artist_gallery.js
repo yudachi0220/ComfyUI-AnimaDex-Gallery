@@ -45,16 +45,24 @@ app.registerExtension({
             let isLoading = false, selectedSlugs = new Set(), favoriteSlugs = new Set();
             let searchQuery = "", scoreFilter = "", showFavoritesOnly = false;
             let imageCache = {};
+            const selectedItemData = []; // 完整选中数据（翻页后仍可用）
 
             const selWidget = node.addWidget("text", "selection_data", "{}", () => {}, { serialize: true });
             selWidget.computeSize = () => [0, -4]; selWidget.type = "hidden";
 
-            function pushSelection() {
-                const selections = [];
-                for (const slug of selectedSlugs) {
-                    const item = items.find(i => i.slug === slug);
-                    if (item) selections.push({ slug, trigger: item.trigger || "", name: item.name || "" });
+            // 从 widget 恢复选中状态（节点重绘后重建）
+            try {
+                const saved = JSON.parse(selWidget.value);
+                if (saved?.selections) {
+                    for (const s of saved.selections) {
+                        selectedSlugs.add(s.slug);
+                        selectedItemData.push(s);
+                    }
                 }
+            } catch(e) {}
+
+            function pushSelection() {
+                const selections = [...selectedItemData];
                 selWidget.value = JSON.stringify({ selections });
                 try { node.onWidgetChanged?.(selWidget); } catch(e) {}
             }
@@ -111,6 +119,7 @@ app.registerExtension({
             topBar.appendChild(layoutSelect);
             topBar.appendChild($el("button", { textContent: "🗑 清除", style: S.small(), title: "清除所有选择", onclick: () => {
                 selectedSlugs.clear();
+                selectedItemData.length = 0;
                 outputPreview.style.display = "none";
                 renderGrid();
                 try { pushSelection(); } catch(e) {}
@@ -212,7 +221,7 @@ app.registerExtension({
                 } catch (e) {}
             }
             function updatePreview() {
-                const sel = items.filter(i => selectedSlugs.has(i.slug));
+                const sel = selectedItemData;
                 if (sel.length) {
                     outputPreview.style.display = "block";
                     outputPreview.innerHTML = "👉 " + sel.map(s => "@" + (s.trigger || s.name)).join("<br>👉 ");
@@ -250,9 +259,12 @@ app.registerExtension({
                     if (selectedSlugs.has(slug)) {
                         selectedSlugs.delete(slug);
                         card.classList.remove("animadex-sel");
+                        const idx = selectedItemData.findIndex(s => s.slug === slug);
+                        if (idx >= 0) selectedItemData.splice(idx, 1);
                     } else {
                         selectedSlugs.add(slug);
                         card.classList.add("animadex-sel");
+                        selectedItemData.push({ slug, trigger: item.trigger || "", name: item.name || "" });
                     }
                     updatePreview(); pushSelection();
                 });
